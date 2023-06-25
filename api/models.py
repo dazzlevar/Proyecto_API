@@ -30,12 +30,13 @@ class Producto(models.Model):
         return self.nombre
     
 class Pedido(models.Model):
-    producto = models.ForeignKey(Producto, on_delete=models.CASCADE)
-    precio = models.DecimalField(max_digits=10, decimal_places=2)
+    productos = models.ManyToManyField(Producto)
+    cantidad = models.PositiveIntegerField()
+    precio_total = models.DecimalField(max_digits=10, decimal_places=2)
     estado_pedido = models.CharField(max_length=50)
     fecha_pedido = models.DateField(auto_now_add=True)
+    fecha_entrega = models.DateField()
 
     def __str__(self):
-        return f"Pedido de {self.producto.nombre} - Estado: {self.estado_pedido}"
-
+        return f"Pedido - Estado: {self.estado_pedido}"
 
