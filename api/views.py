@@ -13,7 +13,6 @@ from django.http import JsonResponse
 from django.conf import settings
 
 
-
 class CategoriaView(View):
     def get(self, request, id=0):
         if id > 0:
@@ -145,7 +144,6 @@ class ProductoView(View):
             datos = {'message': 'Producto not found...'}
         return JsonResponse(datos)
 
-
 class PedidoView(View):
     @method_decorator(csrf_exempt)
     def get(self, request, id=None):
@@ -155,47 +153,65 @@ class PedidoView(View):
                 productos = pedido.productos.all()
                 datos = {
                     'message': 'Success',
-                    'pedido': {
-                        'id': pedido.id,
-                        'fecha_pedido': pedido.fecha_pedido.strftime('%Y-%m-%d'),
-                        'fecha_entrega': pedido.fecha_entrega.strftime('%Y-%m-%d'),
-                        'cantidad': pedido.cantidad,
-                        'precio_total': str(pedido.precio_total),
-                        'estado_pedido': pedido.estado_pedido,
-                        'productos': [{
-                            'id': producto.id,
-                            'nombre': producto.nombre,
-                            'precio': str(producto.precio),
-                            'stock': producto.stock,
-                            'categoria': {
-                                'id': producto.categoria.id,
-                                'nombre': producto.categoria.nombre
-                            }
-                        } for producto in productos]
-                    }
+                    'pedido': self.serialize_pedido(pedido, productos)
                 }
             except Pedido.DoesNotExist:
                 datos = {'message': 'Pedido not found...'}
         else:
-            pedidos = Pedido.objects.values('id', 'fecha_pedido', 'fecha_entrega', 'cantidad', 'precio_total', 'estado_pedido')
-            datos = {'message': 'Success', 'pedidos': list(pedidos)}
+            pedidos = Pedido.objects.prefetch_related('productos__categoria').all()
+            datos = {
+                'message': 'Success',
+                'pedidos': [
+                    self.serialize_pedido(pedido, pedido.productos.all())
+                    for pedido in pedidos
+                ]
+            }
         return JsonResponse(datos)
 
-    @method_decorator(csrf_exempt)
+
+    # Resto del código...
+
+    def serialize_pedido(self, pedido, productos):
+        return {
+            'id': pedido.id,
+            'fecha_pedido': pedido.fecha_pedido.strftime('%Y-%m-%d'),
+            'fecha_entrega': pedido.fecha_entrega.strftime('%Y-%m-%d') if pedido.fecha_entrega else None,
+            'cantidad': pedido.cantidad,
+            'precio_total': str(pedido.precio_total),
+            'estado_pedido': pedido.estado_pedido,
+            'productos': [{
+                'id': producto.id,
+                'nombre': producto.nombre,
+                'precio': str(producto.precio),
+                'stock': producto.stock,
+                'categoria': {
+                    'id': producto.categoria.id,
+                    'nombre': producto.categoria.nombre
+                }
+            } for producto in productos]
+        }
+
+
+
+
     def post(self, request):
         jd = json.loads(request.body)
         producto_ids = jd['producto_ids']
         cantidad = jd['cantidad']
+        fecha_pedido = jd['fecha_pedido']  
+        fecha_entrega = jd['fecha_entrega']  
+        estado_pedido = jd['estado_pedido']  
+
         try:
             productos = Producto.objects.filter(id__in=producto_ids)
             if all(producto.stock > 0 for producto in productos):
                 precio_total = sum(producto.precio for producto in productos)
                 pedido = Pedido.objects.create(
-                    fecha_pedido=date.today(),
+                    fecha_pedido=fecha_pedido,
                     cantidad=cantidad,
                     precio_total=precio_total,
-                    estado_pedido='En Proceso',
-                    fecha_entrega=None
+                    estado_pedido=estado_pedido,
+                    fecha_entrega=fecha_entrega
                 )
                 pedido.productos.set(productos)
                 for producto in productos:
@@ -227,6 +243,7 @@ class PedidoView(View):
         except Producto.DoesNotExist:
             datos = {'message': 'Producto not found...'}
         return JsonResponse(datos)
+
 
     @method_decorator(csrf_exempt)
     def put(self, request, id):
@@ -260,6 +277,7 @@ class PedidoView(View):
             datos = {'message': 'Pedido not found...'}
         return JsonResponse(datos)
 
+
     @method_decorator(csrf_exempt)
     def delete(self, request, id):
         try:
@@ -273,6 +291,91 @@ class PedidoView(View):
         except Pedido.DoesNotExist:
             datos = {'message': 'Pedido not found...'}
         return JsonResponse(datos)
+
+
+
+# class PedidoView(View):
+#     @method_decorator(csrf_exempt)
+#     def get(self, request, id=None):
+#         if id:
+#             try:
+#                 pedido = Pedido.objects.prefetch_related('productos__categoria').get(id=id)
+#                 productos = pedido.productos.all()
+#                 datos = {
+#                     'message': 'Success',
+#                     'pedido': {
+#                         'id': pedido.id,
+#                         'fecha_pedido': pedido.fecha_pedido.strftime('%Y-%m-%d'),
+#                         'fecha_entrega': pedido.fecha_entrega.strftime('%Y-%m-%d'),
+#                         'cantidad': pedido.cantidad,
+#                         'precio_total': str(pedido.precio_total),
+#                         'estado_pedido': pedido.estado_pedido,
+#                         'productos': [{
+#                             'id': producto.id,
+#                             'nombre': producto.nombre,
+#                             'precio': str(producto.precio),
+#                             'stock': producto.stock,
+#                             'categoria': {
+#                                 'id': producto.categoria.id,
+#                                 'nombre': producto.categoria.nombre
+#                             }
+#                         } for producto in productos]
+#                     }
+#                 }
+#             except Pedido.DoesNotExist:
+#                 datos = {'message': 'Pedido not found...'}
+#         else:
+#             pedidos = Pedido.objects.values('id', 'fecha_pedido', 'fecha_entrega', 'cantidad', 'precio_total', 'estado_pedido')
+#             datos = {'message': 'Success', 'pedidos': list(pedidos)}
+#         return JsonResponse(datos)
+
+#     @method_decorator(csrf_exempt)
+
+#     @method_decorator(csrf_exempt)
+#     def put(self, request, id):
+#         jd = json.loads(request.body)
+#         try:
+#             pedido = Pedido.objects.get(id=id)
+#             if 'producto_ids' in jd:
+#                 producto_ids = jd['producto_ids']
+#                 try:
+#                     productos = Producto.objects.filter(id__in=producto_ids)
+#                     if all(producto.stock > 0 for producto in productos):
+#                         pedido.productos.clear()
+#                         pedido.productos.set(productos)
+#                         for producto in productos:
+#                             producto.stock -= 1
+#                             producto.save()
+#                     else:
+#                         return JsonResponse({'message': 'One or more products are out of stock...'})
+#                 except Producto.DoesNotExist:
+#                     return JsonResponse({'message': 'Producto not found...'})
+
+#             if 'cantidad' in jd:
+#                 pedido.cantidad = jd['cantidad']
+#             if 'estado_pedido' in jd:
+#                 pedido.estado_pedido = jd['estado_pedido']
+#             if 'fecha_entrega' in jd:
+#                 pedido.fecha_entrega = jd['fecha_entrega']
+#             pedido.save()
+#             datos = {'message': 'Success'}
+#         except Pedido.DoesNotExist:
+#             datos = {'message': 'Pedido not found...'}
+#         return JsonResponse(datos)
+
+#     @method_decorator(csrf_exempt)
+#     def delete(self, request, id):
+#         try:
+#             pedido = Pedido.objects.prefetch_related('productos').get(id=id)
+#             productos = pedido.productos.all()
+#             for producto in productos:
+#                 producto.stock += 1
+#                 producto.save()
+#             pedido.delete()
+#             datos = {'message': 'Success'}
+#         except Pedido.DoesNotExist:
+#             datos = {'message': 'Pedido not found...'}
+#         return JsonResponse(datos)
 
 class ProductoDiferentesView(View):
     @method_decorator(csrf_exempt)
