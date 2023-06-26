@@ -12,34 +12,39 @@ from datetime import date
 from django.http import JsonResponse
 from django.conf import settings
 
-
 class CategoriaView(View):
     def get(self, request, id=0):
         if id > 0:
             try:
                 categoria = Categoria.objects.get(id=id)
-                datos = {'message': 'Success', 'categoria': {'id': categoria.id, 'nombre': categoria.nombre}}
+                datos = {'message': 'Success', 'categoria': {'id': categoria.id, 'nombre': categoria.nombre, 'categoria_padre': categoria.categoria_padre_id}}
             except Categoria.DoesNotExist:
                 datos = {'message': 'Categoria not found...'}
         else:
             categorias = list(Categoria.objects.values())
             datos = {'message': 'Success', 'categorias': categorias}
         return JsonResponse(datos)
+    
     def post(self, request):
         jd = json.loads(request.body)
-        categoria = Categoria.objects.create(nombre=jd['nombre'])
-        datos = {'message': 'Success', 'categoria': {'id': categoria.id, 'nombre': categoria.nombre}}
+        nombre = jd.get('nombre')
+        categoria_padre_id = jd.get('categoria_padre_id')
+        categoria = Categoria.objects.create(nombre=nombre, categoria_padre_id=categoria_padre_id)
+        datos = {'message': 'Success', 'categoria': {'id': categoria.id, 'nombre': categoria.nombre, 'categoria_padre': categoria.categoria_padre_id}}
         return JsonResponse(datos)
+    
     def put(self, request, id):
         jd = json.loads(request.body)
         try:
             categoria = Categoria.objects.get(id=id)
-            categoria.nombre = jd.get('nombre', categoria.nombre)  # Actualiza el nombre solo si está presente en jd
+            categoria.nombre = jd.get('nombre', categoria.nombre) 
+            categoria.categoria_padre_id = jd.get('categoria_padre_id', categoria.categoria_padre_id)   
             categoria.save()
             datos = {'message': 'Success'}
         except Categoria.DoesNotExist:
             datos = {'message': 'Categoria not found...'}
         return JsonResponse(datos)
+    
     def delete(self, request, id):
         try:
             categoria = Categoria.objects.get(id=id)
@@ -168,9 +173,6 @@ class PedidoView(View):
             }
         return JsonResponse(datos)
 
-
-    # Resto del código...
-
     def serialize_pedido(self, pedido, productos):
         return {
             'id': pedido.id,
@@ -294,156 +296,18 @@ class PedidoView(View):
 
 
 
-# class PedidoView(View):
-#     @method_decorator(csrf_exempt)
-#     def get(self, request, id=None):
-#         if id:
-#             try:
-#                 pedido = Pedido.objects.prefetch_related('productos__categoria').get(id=id)
-#                 productos = pedido.productos.all()
-#                 datos = {
-#                     'message': 'Success',
-#                     'pedido': {
-#                         'id': pedido.id,
-#                         'fecha_pedido': pedido.fecha_pedido.strftime('%Y-%m-%d'),
-#                         'fecha_entrega': pedido.fecha_entrega.strftime('%Y-%m-%d'),
-#                         'cantidad': pedido.cantidad,
-#                         'precio_total': str(pedido.precio_total),
-#                         'estado_pedido': pedido.estado_pedido,
-#                         'productos': [{
-#                             'id': producto.id,
-#                             'nombre': producto.nombre,
-#                             'precio': str(producto.precio),
-#                             'stock': producto.stock,
-#                             'categoria': {
-#                                 'id': producto.categoria.id,
-#                                 'nombre': producto.categoria.nombre
-#                             }
-#                         } for producto in productos]
-#                     }
-#                 }
-#             except Pedido.DoesNotExist:
-#                 datos = {'message': 'Pedido not found...'}
-#         else:
-#             pedidos = Pedido.objects.values('id', 'fecha_pedido', 'fecha_entrega', 'cantidad', 'precio_total', 'estado_pedido')
-#             datos = {'message': 'Success', 'pedidos': list(pedidos)}
-#         return JsonResponse(datos)
-
-#     @method_decorator(csrf_exempt)
-
-#     @method_decorator(csrf_exempt)
-#     def put(self, request, id):
-#         jd = json.loads(request.body)
-#         try:
-#             pedido = Pedido.objects.get(id=id)
-#             if 'producto_ids' in jd:
-#                 producto_ids = jd['producto_ids']
-#                 try:
-#                     productos = Producto.objects.filter(id__in=producto_ids)
-#                     if all(producto.stock > 0 for producto in productos):
-#                         pedido.productos.clear()
-#                         pedido.productos.set(productos)
-#                         for producto in productos:
-#                             producto.stock -= 1
-#                             producto.save()
-#                     else:
-#                         return JsonResponse({'message': 'One or more products are out of stock...'})
-#                 except Producto.DoesNotExist:
-#                     return JsonResponse({'message': 'Producto not found...'})
-
-#             if 'cantidad' in jd:
-#                 pedido.cantidad = jd['cantidad']
-#             if 'estado_pedido' in jd:
-#                 pedido.estado_pedido = jd['estado_pedido']
-#             if 'fecha_entrega' in jd:
-#                 pedido.fecha_entrega = jd['fecha_entrega']
-#             pedido.save()
-#             datos = {'message': 'Success'}
-#         except Pedido.DoesNotExist:
-#             datos = {'message': 'Pedido not found...'}
-#         return JsonResponse(datos)
-
-#     @method_decorator(csrf_exempt)
-#     def delete(self, request, id):
-#         try:
-#             pedido = Pedido.objects.prefetch_related('productos').get(id=id)
-#             productos = pedido.productos.all()
-#             for producto in productos:
-#                 producto.stock += 1
-#                 producto.save()
-#             pedido.delete()
-#             datos = {'message': 'Success'}
-#         except Pedido.DoesNotExist:
-#             datos = {'message': 'Pedido not found...'}
-#         return JsonResponse(datos)
-
 class ProductoDiferentesView(View):
     @method_decorator(csrf_exempt)
     def get(self, request, categoria_id):
-        # Obtener productos diferentes en la misma categoría
         subquery = Producto.objects.filter(categoria_id=categoria_id).values('nombre').distinct()
         productos = Producto.objects.filter(nombre__in=Subquery(subquery))
 
         if productos.exists():
-            # Serializar los productos si es necesario
             serialized_productos = [{'id': producto.id, 'nombre': producto.nombre} for producto in productos]
 
-            # Devolver la respuesta JSON con los productos
             datos = {'message': 'Success', 'productos': serialized_productos}
         else:
             datos = {'message': 'No products found for the specified category.'}
 
         return JsonResponse(datos)
 
-
-# class CompanyView(View):
-
-#     @method_decorator(csrf_exempt)
-#     def dispatch(self, request, *args, **kwargs):
-#         return super().dispatch(request, *args, **kwargs)
-
-#     def get(self, request, id=0):
-#         if (id > 0):
-#             companies = list(Company.objects.filter(id=id).values())
-#             if len(companies) > 0:
-#                 company = companies[0]
-#                 datos = {'message': "Success", 'company': company}
-#             else:
-#                 datos = {'message': "Company not found..."}
-#             return JsonResponse(datos)
-#         else:
-#             companies = list(Company.objects.values())
-#             if len(companies) > 0:
-#                 datos = {'message': "Success", 'companies': companies}
-#             else:
-#                 datos = {'message': "Companies not found..."}
-#             return JsonResponse(datos)
-
-#     def post(self, request):
-#         jd = json.loads(request.body)
-#         Company.objects.create(name=jd['name'], website=jd['website'], foundation=jd['foundation'])
-#         datos = {'message': "Success"}
-#         return JsonResponse(datos)
-
-#     def put(self, request, id):
-#         jd = json.loads(request.body)
-#         companies = list(Company.objects.filter(id=id).values())
-#         if len(companies) > 0:
-#             company = Company.objects.get(id=id)
-#             company.name = jd['name']
-#             company.website = jd['website']
-#             company.foundation = jd['foundation']
-#             company.save()
-#             datos = {'message': "Success"}
-#         else:
-#             datos = {'message': "Company not found..."}
-#         return JsonResponse(datos)
-
-#     def delete(self, request, id):
-#         companies = list(Company.objects.filter(id=id).values())
-#         if len(companies) > 0:
-#             Company.objects.filter(id=id).delete()
-#             datos = {'message': "Success"}
-#         else:
-#             datos = {'message': "Company not found..."}
-#         return JsonResponse(datos)
